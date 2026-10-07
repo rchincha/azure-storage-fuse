@@ -1166,7 +1166,7 @@ func (fc *FileCache) ReadInBuffer(options *internal.ReadInBufferOptions) (int, e
 	}
 
 	// Read and write operations are very frequent so updating cache policy for every read is a costly operation
-	// Update cache policy every 1K operations (includes both read and write) instead
+	// Update cache policy every 100 operations (includes both read and write) instead
 	options.Handle.OptCnt++
 	if (options.Handle.OptCnt % defaultCacheUpdateCount) == 0 {
 		localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
@@ -1203,7 +1203,7 @@ func (fc *FileCache) WriteFile(options *internal.WriteFileOptions) (int, error) 
 	}
 
 	// Read and write operations are very frequent so updating cache policy for every read is a costly operation
-	// Update cache policy every 1K operations (includes both read and write) instead
+	// Update cache policy every 100 operations (includes both read and write) instead
 	options.Handle.OptCnt++
 	if (options.Handle.OptCnt % defaultCacheUpdateCount) == 0 {
 		localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
@@ -1650,7 +1650,7 @@ func (fc *FileCache) Chown(options internal.ChownOptions) error {
 }
 
 func (fc *FileCache) FileUsed(name string) error {
-	// Update the owner and group of the file in the local cache
+	// Mark the file as recently used in the cache policy
 	localPath := filepath.Join(fc.tmpPath, name)
 	fc.policy.CacheValid(localPath)
 	return nil

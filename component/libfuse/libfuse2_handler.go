@@ -636,7 +636,7 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 	}
 
 	handlemap.Add(handle)
-	ret_val := C.allocate_native_file_object(C.uint64_t(handle.UnixFD), C.uint64_t(uintptr(unsafe.Pointer(handle))), 0)
+	ret_val := C.allocate_native_file_object(C.uint64_t(handle.UnixFD), C.uint64_t(uintptr(unsafe.Pointer(handle))))
 	if !handle.Cached() {
 		ret_val.fd = 0
 	}
@@ -690,7 +690,7 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	}
 
 	handlemap.Add(handle)
-	ret_val := C.allocate_native_file_object(C.uint64_t(handle.UnixFD), C.uint64_t(uintptr(unsafe.Pointer(handle))), C.uint64_t(handle.Size))
+	ret_val := C.allocate_native_file_object(C.uint64_t(handle.UnixFD), C.uint64_t(uintptr(unsafe.Pointer(handle))))
 	if !handle.Cached() {
 		ret_val.fd = 0
 	}
@@ -703,7 +703,7 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	return 0
 }
 
-// libfuse_read reads data from an open file
+// libfuse_read reads data from an open file that is not served natively, see native_file_io.h
 //
 //export libfuse_read
 func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
@@ -718,7 +718,6 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 
 	if handle.Cached() {
 		bytesRead, err = syscall.Pread(handle.FD(), data[:size], int64(offset))
-		//bytesRead, err = handle.FObj.ReadAt(data[:size], int64(offset))
 	} else {
 		bytesRead, err = fuseFS.NextComponent().ReadInBuffer(
 			&internal.ReadInBufferOptions{
@@ -739,7 +738,7 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 	return C.int(bytesRead)
 }
 
-// libfuse_write writes data to an open file
+// libfuse_write writes data to an open file that is not served natively, see native_file_io.h
 //
 //export libfuse_write
 func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
@@ -779,11 +778,12 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 
 	log.Trace("Libfuse::libfuse2_flush : %s, handle: %d", handle.Path, handle.ID)
 
-	// If the file handle is not dirty, there is no need to flush
+	// Writes served natively in C are not seen by file_cache, so carry their dirty mark over to the handle
 	if fileHandle.dirty != 0 {
 		handle.Flags.Set(handlemap.HandleFlagDirty)
 	}
 
+	// If the file handle is not dirty, there is no need to flush
 	if !handle.Dirty() {
 		return 0
 	}
@@ -801,6 +801,8 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 		}
 	}
 
+	// The native writes were uploaded with the file
+	fileHandle.dirty = 0
 	return 0
 }
 
@@ -1165,15 +1167,5 @@ func libfuse2_utimens(path *C.char, tv *C.timespec_t) C.int {
 	// TODO: is the conversion from [2]timespec to *timespec ok?
 	// TODO: Implement
 	// For now this returns 0 to allow touch to work correctly
-	return 0
-}
-
-// blobfuse_cache_update refresh the file-cache policy for this file
-//
-//export blobfuse_cache_update
-func blobfuse_cache_update(path *C.char) C.int {
-	name := trimFusePath(path)
-	name = common.NormalizeObjectName(name)
-	go fuseFS.NextComponent().FileUsed(name) //nolint
 	return 0
 }
